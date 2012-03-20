@@ -1,0 +1,3 @@
+[submodule "Arctic.js"]
+	path = Arctic.js
+	url = https://github.com/DeNADev/Arctic.js.git

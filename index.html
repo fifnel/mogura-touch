@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>もぐらタッチ！</title>
+		<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+		<meta name="viewport" content="width=device-width; initial-scale=1; maximum-scale=1; user-scalable=no;">
+	</head>
+	<body>
+		<div id="loading"><div class="cont"></div></div>
+		<canvas id="canvas"></canvas>
+		<script src="./Arctic.js/arctic.js"></script>
+		<script>
+			var GameMain = arc.Class.create(arc.Game, {
+				_score:0,
+				_scoreText:null,
+
+				_stage:null,
+
+				//Gameパラメーターをセットする処理等の初期化処理
+				initialize:function(params){
+
+					// 背景をまず用意する
+					var bg = new arc.display.Shape();
+					bg.beginFill(0x000000);
+					bg.drawRect(0,0,320,320);
+					bg.endFill();
+					this.addChild(bg);
+
+					// スコア表示用テキスト
+					this._scoreText = new arc.display.TextField();
+					this._scoreText.setColor(0xffffff);
+					this._scoreText.setFont('sans-serif', 20, false);
+					this._scoreText.setX(0);
+					this._scoreText.setY(0);
+					this.addChild(this._scoreText);
+					this.resetScore();
+
+					// ゲームステージの生成
+					this._stage = new Stage({game:this, timeLimit:30});
+					this.addChild(this._stage);
+
+				},
+				// 毎フレームの処理
+				update:function(){
+					this._stage.update();
+				},
+
+				// スコア関係
+				resetScore:function(){
+					this._score = 0;
+					this._scoreText.setText("Score:"+this._score);
+				},
+				addScore:function(score){
+					this._score += score;
+					this._scoreText.setText("Score:"+this._score);
+				}
+			});
+
+			// ステージクラス
+			var Stage = arc.Class.create(arc.Game, {
+				_game:null,
+				_timeLimit:0,
+				
+				_timer:null,
+				_prevTime:0,
+				_gameTime:0,
+				_phase:0,
+				_timeLimitText:null,
+
+				_mcReady:null,
+
+				_prevAppear:0,
+				
+				initialize:function(params){
+					this._game      = params['game'];
+					this._timeLimit = params['timeLimit'];
+
+					// タイマー ゲーム起動時を0としたミリ秒のタイマー
+					this._timer = new arc.Timer();
+					this._timer.start();
+					arc.Timer.tick(); // 一度回さないと値がとれない
+					this._prevTime = this._timer.getElapsed();
+					this._gameTime = 0;
+
+					
+					// タイムリミットのテキスト
+					this._timeLimitText = new arc.display.TextField();
+					this._timeLimitText.setColor(0xffffff);
+					this._timeLimitText.setFont('sans-serif', 20, false);
+					this._timeLimitText.setX(200);
+					this._timeLimitText.setY(0);
+					this.addChild(this._timeLimitText);
+				},
+				update:function(){
+					switch(this._phase) {
+						case 0: { // Ready? setup
+
+							// Ready? -> GO!! の表示
+							// このへん、jsonにしたい
+							var ready = new arc.display.TextField();
+							ready.setColor(0xffffff);
+							ready.setFont('sans-serif', 20, false);
+							ready.setX(-60);
+							ready.setY(0);
+							ready.setText('Ready?');
+
+							var go = new arc.display.TextField();
+							go.setColor(0xffffff);
+							go.setFont('sans-serif', 20, false);
+							go.setX(-20);
+							go.setY(0);
+							go.setText('GO!!');
+
+							this._mcReady = new arc.display.MovieClip(30, false, false);
+							this._mcReady.addChild( ready, {
+								0:{visible:true},
+								30:{visible:false}
+							});
+							this._mcReady.addChild( go, {
+								1:{visible:false},
+								30:{visible:true},
+								60:{visible:false}
+							});
+							this._mcReady.setX(160);
+							this._mcReady.setY(150);
+
+							this.addChild(this._mcReady);
+							this._game.resetScore();
+							this.resetGameTime();
+
+							this._mcReady.play();
+
+							this._timeLimitText.setText('Time:'+this._timeLimit);
+
+							this._phase = 1;
+						}break;
+
+						case 1: { // Ready? wait
+							if (this._gameTime > 2000) {
+								this.resetGameTime();
+								this._phase = 2;
+								this.removeChild(this._mcReady);
+							}
+						}break;
+
+						case 2: { // play
+							// とりあえず800msごとランダムで出す
+							// 設定関係は外だししていきたい
+							if (this._gameTime-this._prevAppear > 800) {
+								var x = Math.floor(Math.random() * 320);
+								var y = Math.floor(Math.random() * 300)+20;
+								var size = Math.floor(Math.random() * 20)+2;
+								var score = (20-size)*100;
+								var duration = Math.floor(Math.random() * 2000 + 500);
+
+								var enemy = new Enemy({game:this._game, stage:this, x:x, y:y, size:size, score:score, duration:duration});
+								this.addChild(enemy);
+
+								this._prevAppear += 800;
+							}
+							var limit = Math.floor(this._timeLimit - this._gameTime/1000);
+							if (limit < 0) limit = 0;
+							this._timeLimitText.setText('Time:'+limit);
+							if (this._gameTime > this._timeLimit*1000) {
+								this.resetGameTime();
+								this._phase = 3;
+							}
+						}break;
+
+						case 3: { // wait enemies all disappear
+							if (this._gameTime > 2500) {
+								this.resetGameTime();
+								this._phase = 4;
+							}
+						}break;
+
+						case 4: { // result setup
+							var finish = new arc.display.TextField();
+							finish.setColor(0xffffff);
+							finish.setFont('sans-serif', 20, false);
+							finish.setX(60);
+							finish.setY(150);
+							finish.setText('Finish!');
+							this.addChild(finish);
+
+							this.resetGameTime();
+							this._phase = 5;
+						}break;
+
+						case 5: { // result
+							// とりえあず放置プレイ
+						}break;
+
+						default: {
+							console.log('phase error:'+this._phase);
+						}break;
+					}
+
+					// タイマーの更新
+					var curTime = this._timer.getElapsed();
+					this._gameTime += curTime - this._prevTime;
+					this._prevTime = curTime;
+				},
+				
+				// ゲームタイマー関係
+				resetGameTime:function(){
+					this._prevTime = this._timer.getElapsed();
+					this._gameTime = 0;
+				},
+				getGameTime:function(){
+					return this._gameTime;
+				}
+			});
+
+			// 敵クラス
+			// 一定時間すると消える
+			// タッチすると得点を付与して消える
+			var Enemy = arc.Class.create(arc.Game, {
+				_game:null,
+				_stage:null,
+
+				initialize:function(params){
+					this._game   = params['game'];
+					this._stage  = params['stage'];
+
+					var x        = params['x'];
+					var y        = params['y'];
+					var size     = params['size'];
+					var score    = params['score'];
+					var duration = params['duration'];
+
+					// とりあえず丸でも書いておく
+					var shape = new arc.display.Shape();
+					shape.beginFill(0xff0000);
+					shape.drawCircle(x,y,size);
+					shape.endFill();
+
+					var mc = new arc.display.MovieClip(30, false, true);
+					mc.addChild(shape, {
+						// 後でなんかアニメーションいれたい
+					});
+					this.addChild(mc);
+
+					var self = this;
+					// タッチしたら
+					self.addEventListener(arc.Event.TOUCH_START, function(event){
+						self._game.addScore(score);
+						self._stage.removeChild(self);
+					});
+
+					// 一定時間したら
+					setTimeout(function(){
+						self._stage.removeChild(self);
+					}, duration);
+				}
+			});
+
+			window.addEventListener('DOMContentLoaded', function(e){
+				var system = new arc.System(320, 320, 'canvas', false, false);
+				system.setGameClass(GameMain, {hp:100, mp:100});
+				system.addEventListener(arc.Event.PROGRESS, function(e){
+					console.log(e.loaded + ", " + e.total);
+				});
+				system.addEventListener(arc.Event.COMPLETE, function(){
+					consolr.log('loaded');
+				});
+				system.start();
+			}, false);
+		</script>
+		<div id="author">てきとうなモグラたたき <a href="http://memo.fifnel.com">by fifnel</a></div>
+		<div id="fps" style="color:#000000;"></div>
+	</body>
+</html>
